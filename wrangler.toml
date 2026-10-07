@@ -9,7 +9,7 @@ RETENTION_DAYS = "90"   # IP addresses are blanked after this many days
 [[d1_databases]]
 binding = "DB"
 database_name = "labyrinth-log"
-database_id = "e3b2c3fd-6f6e-4593-bcb7-4e4befc88f75"
+database_id = "2e35fb20-10f1-4f63-a398-8e802d25bdc5"
 
 [[rules]]
 type = "Text"
