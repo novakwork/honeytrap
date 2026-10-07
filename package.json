@@ -1,0 +1,1 @@
+{ "name": "labyrinth", "private": true, "devDependencies": { "wrangler": "^4" } }

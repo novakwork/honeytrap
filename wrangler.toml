@@ -1,0 +1,17 @@
+name = "labyrinth"
+main = "worker.js"
+compatibility_date = "2025-09-01"
+
+[vars]
+DELAY_MS = "1500"       # slows each maze page a little, set "0" to turn off
+RETENTION_DAYS = "90"   # IP addresses are blanked after this many days
+
+[[d1_databases]]
+binding = "DB"
+database_name = "labyrinth-log"
+database_id = "PASTE_ID_FROM_STEP_3"
+
+[[rules]]
+type = "Text"
+globs = ["**/*.html"]
+fallthrough = true
