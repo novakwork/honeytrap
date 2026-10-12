@@ -1,0 +1,643 @@
+<title>Honey · Pot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono&display=swap">
+<style>
+/* Layout: a blank page meeting a pale surface, the glass pot sitting on it, the readout just below. Deliberately a single light look. */
+:root{
+  --paper:#f7f6f2;
+  --floor:#ebe8e0;
+  --ink:#24211d;
+  --soft:#5f5950;
+  --mute:#8c857a;
+  --line:#dcd8cf;
+  --honey:#a5660b;
+  --tip-bg:#24211d;
+  --tip-fg:#f7f6f2;
+  --mono:"DM Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  color-scheme:light;
+}
+html,body{height:100%}
+[hidden]{display:none!important}
+body{margin:0;background:var(--paper);color:var(--ink);overflow:hidden}
+#stage{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:manipulation}
+.readout{position:fixed;left:16px;right:16px;text-align:center;font-family:var(--mono);letter-spacing:.03em;pointer-events:none}
+.readout .count{font-size:clamp(18px,2.3vw,26px);line-height:1.3;color:var(--ink);font-variant-numeric:tabular-nums}
+.readout .count b{font-weight:400}
+.readout .count span{color:var(--soft)}
+.readout .latest{margin-top:clamp(12px,1.8vh,18px);font-size:clamp(12px,1.35vw,15px);line-height:1.5;color:var(--soft)}
+.readout .since{margin-top:clamp(12px,1.8vh,18px);font-size:12px;line-height:1.5;color:var(--mute);font-variant-numeric:tabular-nums}
+.readout .all{pointer-events:auto;margin-top:12px;padding:3px 0;border:0;border-bottom:1px solid var(--line);background:none;
+  font:12px/1.4 var(--mono);letter-spacing:.04em;color:var(--soft);cursor:pointer}
+.readout .all:hover{color:var(--ink);border-bottom-color:var(--soft)}
+button:focus-visible,a:focus-visible{outline:2px solid var(--honey);outline-offset:3px}
+.foot{position:fixed;left:16px;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));margin:0;text-align:center;
+  font:11px/1.5 var(--mono);letter-spacing:.04em;color:var(--mute)}
+.foot a{color:var(--soft);text-decoration:none;border-bottom:1px solid var(--line)}
+.foot a:hover{color:var(--ink)}
+.panel{position:fixed;top:0;right:0;bottom:0;z-index:3;width:min(440px,100%);display:flex;flex-direction:column;
+  background:var(--paper);border-left:1px solid var(--line);box-shadow:-16px 0 40px rgba(36,33,29,.08);
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);font-family:var(--mono)}
+.panel header{display:flex;align-items:baseline;justify-content:space-between;gap:16px;padding:20px 20px 14px;border-bottom:1px solid var(--line)}
+.panel h2{margin:0;font-size:13px;font-weight:400;letter-spacing:.12em;text-transform:uppercase;color:var(--ink)}
+.panel .sub{display:block;margin-top:4px;font-size:11px;letter-spacing:.04em;color:var(--mute);text-transform:none}
+.panel .close{border:0;background:none;padding:4px 0;font:12px/1.4 var(--mono);color:var(--soft);cursor:pointer;border-bottom:1px solid var(--line)}
+.panel ol{list-style:none;margin:0;padding:0 20px;overflow-y:auto;flex:1;min-height:0}
+.panel li{display:grid;grid-template-columns:1fr auto;column-gap:12px;padding:11px 0;border-bottom:1px solid var(--line);font-size:12px;line-height:1.5;min-width:0}
+.panel li .t{color:var(--soft);font-variant-numeric:tabular-nums}
+.panel li .i{color:var(--mute);font-variant-numeric:tabular-nums}
+.panel li .c{grid-column:1 / -1;color:var(--ink);overflow-wrap:anywhere}
+.panel li .n{grid-column:1 / -1;color:var(--soft);overflow-wrap:anywhere}
+.panel .older{margin:14px 20px 18px;align-self:flex-start;border:0;background:none;padding:3px 0;font:12px/1.4 var(--mono);color:var(--soft);cursor:pointer;border-bottom:1px solid var(--line)}
+.tip{position:fixed;z-index:2;max-width:min(320px,calc(100vw - 32px));padding:6px 9px;border-radius:3px;
+  background:var(--tip-bg);color:var(--tip-fg);font:11px/1.5 var(--mono);letter-spacing:.03em;pointer-events:none}
+.trap{position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden}
+</style>
+
+<canvas id="stage" role="img" aria-label="A glass honey pot on a blank page. Each fly inside is a crawler that ignored the keep-out sign."></canvas>
+<div class="readout" id="readout">
+  <div aria-live="polite">
+    <div class="count"><b id="count">0</b> <span>caught</span></div>
+    <div class="latest"><span id="latest">waiting for the first catch</span></div>
+  </div>
+  <div class="since" id="sinceRow" hidden>catching for <span id="elapsed">00:00:00</span></div>
+  <button class="all" id="openList" type="button" aria-controls="panel" aria-expanded="false">View all catches</button>
+</div>
+<p class="foot">Copyright © 2026 <a href="https://www.shannonnovak.com" target="_blank" rel="noopener">Shannon Novak</a></p>
+<aside class="panel" id="panel" hidden aria-labelledby="panelTitle">
+  <header>
+    <div><h2 id="panelTitle">Catches</h2><span class="sub" id="panelSub"></span></div>
+    <button class="close" id="closeList" type="button">Close</button>
+  </header>
+  <ol id="list"></ol>
+  <button class="older" id="older" type="button" hidden>Load earlier catches</button>
+</aside>
+<div class="tip" id="tip" hidden></div>
+
+<nav class="trap" aria-hidden="true">
+  <a href="archive/index" rel="nofollow" tabindex="-1">Archive</a>
+  <a href="archive/collection-1996" rel="nofollow" tabindex="-1">Collection</a>
+  <a href="archive/notes-and-studies" rel="nofollow" tabindex="-1">Notes</a>
+</nav>
+
+<script>
+(() => {
+  // ---------- setup ----------
+  const cv = document.getElementById('stage');
+  const ctx = cv.getContext('2d');
+  const base = document.createElement('canvas');   // surface, shadow, back glass, honey, settled flies
+  const bctx = base.getContext('2d');
+  const front = document.createElement('canvas');  // front glass, drawn over everything inside
+  const fctx = front.getContext('2d');
+  const tok = getComputedStyle(document.documentElement);
+  const PAPER = tok.getPropertyValue('--paper').trim();
+  const FLOOR = tok.getPropertyValue('--floor').trim();
+  const INK = tok.getPropertyValue('--ink').trim();
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const elReadout = document.getElementById('readout');
+  const elCount = document.getElementById('count');
+  const elLatest = document.getElementById('latest');
+  const elSince = document.getElementById('sinceRow');
+  const elElapsed = document.getElementById('elapsed');
+  const elOpen = document.getElementById('openList');
+  const elPanel = document.getElementById('panel');
+  const elPanelSub = document.getElementById('panelSub');
+  const elList = document.getElementById('list');
+  const elClose = document.getElementById('closeList');
+  const elOlder = document.getElementById('older');
+  const elTip = document.getElementById('tip');
+
+  let W = 0, H = 0, DPR = 1, U = 1, CX = 0, CY = 0;
+
+  function rng(seed) {
+    return () => {
+      seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // ---------- pot geometry (units; origin near the pot centre, y down) ----------
+  const NECKY = -17, RIMY = -21.4, RIM_RX = 17.6, RIM_RY = 3.4, RIM_IN = 1.5, NECK_X = 16;
+  const WALL = 0.93, PIVOT = 1;  // inner surface = outer scaled about (0, PIVOT)
+  const RIGHT = [
+    [[16,-17],[16.2,-12.5],[22.5,-11],[22.5,-1]],
+    [[22.5,-1],[22.5,10],[19.5,19.5],[14,21]],
+  ];
+  function sidePath(p, close) {
+    p.moveTo(-16, -17);
+    p.bezierCurveTo(-16.2,-12.5,-22.5,-11,-22.5,-1);
+    p.bezierCurveTo(-22.5,10,-19.5,19.5,-14,21);
+    p.quadraticCurveTo(0, 24.6, 14, 21);
+    p.bezierCurveTo(19.5,19.5,22.5,10,22.5,-1);
+    p.bezierCurveTo(22.5,-11,16.2,-12.5,16,-17);
+    if (close) p.closePath();
+    return p;
+  }
+  const body = sidePath(new Path2D(), true);
+  const outline = sidePath(new Path2D(), false);
+  const inner = new Path2D();
+  inner.addPath(body, new DOMMatrix().translate(0, PIVOT).scale(WALL).translate(0, -PIVOT));
+  const innerLine = new Path2D();
+  innerLine.addPath(outline, new DOMMatrix().translate(0, PIVOT).scale(WALL).translate(0, -PIVOT));
+  const wall = new Path2D();
+  wall.addPath(body); wall.addPath(inner);
+
+  const collar = new Path2D();
+  collar.moveTo(-RIM_RX, RIMY);
+  collar.lineTo(-NECK_X - 0.3, NECKY - 0.3);
+  collar.ellipse(0, NECKY - 0.3, NECK_X + 0.3, RIM_RY*0.95, 0, Math.PI, 0, true);
+  collar.lineTo(RIM_RX, RIMY);
+  collar.ellipse(0, RIMY, RIM_RX, RIM_RY, 0, 0, Math.PI, true);
+  collar.closePath();
+  const rimRing = new Path2D();
+  rimRing.ellipse(0, RIMY, RIM_RX, RIM_RY, 0, 0, Math.PI*2);
+  rimRing.ellipse(0, RIMY, RIM_RX - RIM_IN, RIM_RY - 0.42, 0, 0, Math.PI*2);
+
+  // outer half-width at each height
+  const HW = new Float32Array(441); // y from -22 to 22 in 0.1 steps
+  (() => {
+    const pts = [];
+    for (const [a,b,c,d] of RIGHT) for (let i = 0; i <= 200; i++) {
+      const t = i/200, m = 1-t;
+      pts.push([m*m*m*a[0]+3*m*m*t*b[0]+3*m*t*t*c[0]+t*t*t*d[0],
+                m*m*m*a[1]+3*m*m*t*b[1]+3*m*t*t*c[1]+t*t*t*d[1]]);
+    }
+    pts.sort((p,q) => p[1]-q[1]);
+    let j = 0;
+    for (let k = 0; k < HW.length; k++) {
+      const y = -22 + k*0.1;
+      if (y < NECKY) { HW[k] = NECK_X; continue; }
+      while (j < pts.length-2 && pts[j+1][1] < y) j++;
+      const [x0,y0] = pts[j], [x1,y1] = pts[j+1];
+      HW[k] = y1 === y0 ? x0 : x0 + (x1-x0)*(y-y0)/(y1-y0);
+    }
+  })();
+  const hw = (y) => HW[Math.max(0, Math.min(440, Math.round((y+22)*10)))];
+  const hwIn = (y) => hw(PIVOT + (y - PIVOT)/WALL)*WALL;   // inner half-width
+
+  // honey fills the bottom quarter of the inside
+  const IN_TOP = PIVOT + (NECKY - PIVOT)*WALL, IN_BOT = PIVOT + (22.6 - PIVOT)*WALL;
+  const HONEY_Y = IN_BOT - (IN_BOT - IN_TOP)*0.25;
+  const HONEY_RX = hwIn(HONEY_Y) - 0.1;
+  const HONEY_RY = HONEY_RX*0.19;
+
+  // Slots for flies, filled in order. Each slot sits on a flat disc seen in perspective,
+  // the same tilt as the honey's surface. The heap starts as a small oval in the middle of the
+  // honey, spreads out to its edge, then rises in layers (slightly higher in the middle).
+  const TILT = HONEY_RY/HONEY_RX;
+  const SLOTS = (() => {
+    const r = rng(2026), out = [], STEP = 1.05, LAYER = 0.42;
+    for (let h = 0, layer = 0; HONEY_Y - h > RIMY + 1.4; h += LAYER, layer++) {
+      const yc = HONEY_Y - h;
+      const R = (yc < NECKY + 0.5 ? NECK_X - RIM_IN - 0.4 : hwIn(yc)) - 0.55;
+      const off = (layer % 3)*STEP/3;
+      for (let Z = -R; Z <= R; Z += STEP*0.87) {
+        const row = Math.round((Z + R)/(STEP*0.87));
+        for (let X = -R + off + (row % 2)*STEP/2; X <= R; X += STEP) {
+          const jx = X + (r()-0.5)*0.55, jz = Z + (r()-0.5)*0.55;
+          if (jx*jx + jz*jz > R*R) continue;
+          const jh = h + (r()-0.5)*0.16;
+          const rho = Math.hypot(jx, jz)/HONEY_RX;
+          out.push({ x: jx, y: HONEY_Y + jz*TILT - jh, a: r()*Math.PI*2, s: 0.8 + r()*0.25,
+                     key: jh + 2.2*rho*rho + (r()-0.5)*0.25 });
+        }
+      }
+    }
+    out.sort((p,q) => p.key - q.key);
+    return out;
+  })();
+  const CAP = SLOTS.length;
+
+  function slotFor(id) {
+    const i = id - 1;
+    if (i < CAP) return { id, ...SLOTS[i] };
+    const r = rng(id*7919 + 3);   // pot is full: later flies settle among the top layer
+    return { id, ...SLOTS[CAP - 1 - Math.floor(r()*Math.min(400, CAP))], a: r()*Math.PI*2 };
+  }
+
+  // ---------- drawing ----------
+  function ell(c, x, y, rx, ry, rot = 0, a0 = 0, a1 = Math.PI*2) { c.beginPath(); c.ellipse(x, y, rx, ry, rot, a0, a1); }
+  const unit = (c) => c.setTransform(U*DPR, 0, 0, U*DPR, CX*DPR, CY*DPR);
+  function softEllipse(c, x, y, rx, ry, rgb, alpha) {
+    const g = c.createRadialGradient(0, 0, 0, 0, 0, 1);
+    g.addColorStop(0, `rgba(${rgb},${alpha})`);
+    g.addColorStop(0.55, `rgba(${rgb},${alpha*0.55})`);
+    g.addColorStop(1, `rgba(${rgb},0)`);
+    c.save(); c.translate(x, y); c.scale(rx, ry);
+    c.fillStyle = g; c.beginPath(); c.arc(0, 0, 1, 0, Math.PI*2); c.fill();
+    c.restore();
+  }
+
+  function drawBase() {
+    const c = bctx;
+    c.setTransform(1,0,0,1,0,0);
+    c.fillStyle = PAPER;
+    c.fillRect(0, 0, base.width, base.height);
+
+    // the surface the pot stands on
+    const horizon = (CY + 12*U)*DPR;
+    const g0 = c.createLinearGradient(0, horizon - 30*DPR, 0, base.height);
+    g0.addColorStop(0, PAPER); g0.addColorStop(0.12, FLOOR); g0.addColorStop(1, '#e4e0d6');
+    c.fillStyle = g0;
+    c.fillRect(0, horizon - 30*DPR, base.width, base.height);
+
+    unit(c);
+    // cast shadow falling back and right, warmed by the honey; tight contact shadow under the base
+    softEllipse(c, 8, 21.4, 27, 4.2, '60,45,25', 0.16);
+    softEllipse(c, 6, 21.6, 12, 2.0, '220,140,25', 0.16);
+    softEllipse(c, 0, 22.4, 16.5, 1.7, '45,32,15', 0.42);
+    softEllipse(c, 0, 22.7, 13, 0.8, '35,25,10', 0.5);
+
+    // back of the glass
+    let g = c.createLinearGradient(-24, 0, 24, 0);
+    g.addColorStop(0, 'rgba(204,221,219,.34)'); g.addColorStop(0.5, 'rgba(226,236,234,.16)'); g.addColorStop(1, 'rgba(188,205,203,.30)');
+    c.fillStyle = g; c.fill(body); c.fill(collar);
+    c.strokeStyle = 'rgba(90,110,108,.32)'; c.lineWidth = 0.16;
+    ell(c, 0, RIMY, RIM_RX - RIM_IN, RIM_RY - 0.42, 0, Math.PI, Math.PI*2); c.stroke();
+    ell(c, 0, NECKY - 0.3, NECK_X - 1, RIM_RY*0.85, 0, Math.PI, Math.PI*2); c.stroke();
+
+    // honey, held inside the thick wall
+    c.save(); c.clip(inner);
+    g = c.createLinearGradient(0, HONEY_Y, 0, IN_BOT);
+    g.addColorStop(0, '#e3a12a'); g.addColorStop(1, '#a8650a');
+    c.fillStyle = g; c.fillRect(-26, HONEY_Y, 52, 14);
+    c.fillStyle = 'rgba(255,236,190,.12)';
+    ell(c, -7, 17.4, 7.5, 1.5); c.fill();
+    c.restore();
+    g = c.createLinearGradient(0, HONEY_Y - HONEY_RY, 0, HONEY_Y + HONEY_RY);
+    g.addColorStop(0, '#c98510'); g.addColorStop(1, '#f2b947');
+    c.fillStyle = g;
+    ell(c, 0, HONEY_Y, HONEY_RX, HONEY_RY); c.fill();
+    c.strokeStyle = 'rgba(255,240,205,.5)'; c.lineWidth = 0.14;
+    ell(c, 0, HONEY_Y, HONEY_RX - 0.2, HONEY_RY - 0.15, 0, 0.2, Math.PI - 0.2); c.stroke();
+  }
+
+  function drawFront() {
+    const c = fctx;
+    c.setTransform(1,0,0,1,0,0);
+    c.clearRect(0, 0, front.width, front.height);
+    unit(c);
+
+    // thick glass wall: tinted band between outer and inner surface
+    c.fillStyle = 'rgba(240,248,247,.08)'; c.fill(inner);
+    c.fillStyle = 'rgba(198,218,215,.34)'; c.fill(wall, 'evenodd');
+    c.strokeStyle = 'rgba(255,255,255,.6)'; c.lineWidth = 0.14; c.stroke(innerLine);
+    c.strokeStyle = 'rgba(70,92,90,.5)'; c.lineWidth = 0.16; c.stroke(outline);
+    c.strokeStyle = 'rgba(70,92,90,.18)'; c.lineWidth = 0.1;
+    c.save(); c.translate(0, PIVOT); c.scale(WALL - 0.008, WALL - 0.008); c.translate(0, -PIVOT); c.stroke(outline); c.restore();
+
+    // heavy glass base
+    c.save(); c.clip(body);
+    c.fillStyle = 'rgba(200,220,217,.35)';
+    ell(c, 0, 22, 15, 2.3); c.fill();
+    c.restore();
+    c.strokeStyle = 'rgba(255,255,255,.65)'; c.lineWidth = 0.18;
+    ell(c, 0, 20.6, 12.2, 1.4, 0, 0.12, Math.PI - 0.12); c.stroke();
+
+    // reflections
+    c.fillStyle = 'rgba(255,255,255,.62)';
+    ell(c, -17.2, 1, 1.0, 8, 0.1); c.fill();
+    ell(c, -16.2, -12.6, 0.5, 1.9, 0.55); c.fill();
+    c.fillStyle = 'rgba(255,255,255,.3)';
+    ell(c, 19, 4, 0.6, 6.5, -0.1); c.fill();
+    ell(c, -19.3, 3, 0.25, 6, 0.08); c.fill();
+
+    // collar and thick rim
+    c.fillStyle = 'rgba(214,230,228,.30)'; c.fill(collar);
+    c.strokeStyle = 'rgba(70,92,90,.48)'; c.lineWidth = 0.18; c.stroke(collar);
+    c.strokeStyle = 'rgba(255,255,255,.55)'; c.lineWidth = 0.12;
+    ell(c, 0, NECKY - 0.3, NECK_X - 0.9, RIM_RY*0.86, 0, 0.1, Math.PI - 0.1); c.stroke();
+    c.fillStyle = 'rgba(206,224,221,.75)'; c.fill(rimRing, 'evenodd');
+    c.strokeStyle = 'rgba(70,92,90,.55)'; c.lineWidth = 0.16;
+    ell(c, 0, RIMY, RIM_RX, RIM_RY); c.stroke();
+    c.strokeStyle = 'rgba(70,92,90,.35)'; c.lineWidth = 0.12;
+    ell(c, 0, RIMY, RIM_RX - RIM_IN, RIM_RY - 0.42); c.stroke();
+    c.strokeStyle = 'rgba(255,255,255,.85)'; c.lineWidth = 0.22;
+    ell(c, 0, RIMY + 0.05, RIM_RX - RIM_IN*0.5, RIM_RY - 0.2, 0, 0.3, Math.PI - 0.3); c.stroke();
+    c.fillStyle = 'rgba(255,255,255,.55)';
+    ell(c, -15.6, -19.4, 0.45, 1.5, 0.1); c.fill();
+  }
+
+  function drawFly(c, x, y, a, s, wing = 1, alpha = 1, settled = false) {
+    c.save();
+    c.translate(x, y); c.rotate(a); c.scale(s, s);
+    c.globalAlpha = alpha;
+    c.fillStyle = settled ? 'rgba(150,158,164,.55)' : 'rgba(236,240,244,.82)';
+    c.strokeStyle = 'rgba(40,40,40,.4)'; c.lineWidth = 0.04;
+    ell(c, -0.12,  0.27, 0.5, 0.2*wing,  0.6); c.fill(); c.stroke();
+    ell(c, -0.12, -0.27, 0.5, 0.2*wing, -0.6); c.fill(); c.stroke();
+    c.fillStyle = INK;
+    ell(c, -0.2, 0, 0.29, 0.18); c.fill();
+    ell(c, 0.11, 0, 0.16, 0.15); c.fill();
+    ell(c, 0.29, 0, 0.1, 0.1); c.fill();
+    c.restore();
+  }
+
+  // ---------- state ----------
+  const landed = [];            // every fly in the pot, oldest first
+  const SURF = 160;             // the newest flies stay loose so the heap can shift
+  const meta = new Map();
+  const pending = [];
+  const live = [];
+  const MAX_LIVE = 40, MAX_BACKLOG = 400;
+  let latestId = 0, dirty = true, nextSpawn = 0, settling = 0;
+
+  function bake(f) { unit(bctx); drawFly(bctx, f.x, f.y, f.a, f.s, 0.75, 0.97, true); }
+
+  // where a loose fly is drawn right now (it may be partway through a shift)
+  const ease = (t) => 1 - Math.pow(1 - t, 3);
+  function now_(f, now) {
+    const m = f.m;
+    if (!m) return [f.x, f.y, f.a];
+    const t = (now - m.t0)/m.dur;
+    if (t <= 0) return [m.fx, m.fy, m.fa];
+    if (t >= 1) { f.m = null; return [f.x, f.y, f.a]; }
+    const e = ease(t);
+    return [m.fx + (f.x - m.fx)*e, m.fy + (f.y - m.fy)*e, m.fa + (f.a - m.fa)*e];
+  }
+
+  // a landing makes the loose flies around it shuffle over a little and settle
+  function jostle(nf, now) {
+    if (reduce) return;
+    const R = 4.4;
+    const from = Math.max(0, landed.length - SURF);
+    for (let i = from; i < landed.length; i++) {
+      const f = landed[i];
+      if (f === nf) continue;
+      const dx = f.x - nf.x, dy = (f.y - nf.y)*2.5, d = Math.hypot(dx, dy);
+      if (d > R) continue;
+      const k = Math.pow(1 - d/R, 1.3), ux = d ? dx/d : (Math.random() - 0.5), uy = d ? dy/d : 0;
+      const [cx, cy, ca] = now_(f, now);
+      const push = (0.3 + Math.random()*0.32)*k;
+      f.m = { t0: now + d*60 + Math.random()*120, dur: 750 + Math.random()*600, fx: cx, fy: cy, fa: ca };
+      f.x = cx + ux*push;
+      f.y = cy + uy*push*0.55 + 0.05*k;
+      f.a = ca + (Math.random() - 0.5)*1.3*k;
+      settling = Math.max(settling, f.m.t0 + f.m.dur + 50);
+    }
+    nf.m = { t0: now, dur: 650, fx: nf.x + (Math.random() - 0.5)*0.4, fy: nf.y - 0.25, fa: nf.a + (Math.random() - 0.5)*0.6 };
+    settling = Math.max(settling, now + 700);
+  }
+
+  function land(id, quiet, now) {
+    const f = slotFor(id);
+    landed.push(f);
+    const out = landed.length - SURF - 1;
+    if (out >= 0) bake(landed[out]);
+    if (id > latestId) latestId = id;
+    if (!quiet) { jostle(f, now ?? performance.now()); updateCaption(true); }
+    dirty = true;
+  }
+
+  function place() {
+    U = Math.max(2, Math.min(W/68, (H - 280)/56));
+    const block = 54*U + 160;
+    const top = Math.max(28, (H - 44 - block)/2);
+    CX = W/2;
+    CY = top + 25*U;
+    elReadout.style.top = (CY + 27*U) + 'px';
+  }
+
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = innerWidth; H = innerHeight;
+    for (const c of [cv, base, front]) { c.width = Math.round(W*DPR); c.height = Math.round(H*DPR); }
+    place();
+    drawBase();
+    drawFront();
+    const upto = Math.max(0, landed.length - SURF);
+    for (let i = 0; i < upto; i++) bake(landed[i]);
+    dirty = true;
+  }
+
+  // ---------- caption, clock & tooltip ----------
+  let firstTs = null;
+  const pad = (n) => String(n).padStart(2, '0');
+  function stamp(ts) {
+    const d = new Date(ts);
+    if (isNaN(d)) return '';
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) + ', ' +
+           d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  }
+  function describe(id) {
+    const m = meta.get(id);
+    if (!m) return `#${id.toLocaleString()}`;
+    return [`#${id.toLocaleString()}`, stamp(m.ts), m.label, m.org].filter(Boolean).join(' · ');
+  }
+  function updateCaption(fresh) {
+    elCount.textContent = latestId.toLocaleString();
+    const m = meta.get(latestId);
+    elLatest.textContent = !latestId ? 'waiting for the first catch'
+      : 'Last catch: ' + (m ? [stamp(m.ts), m.label, m.org].filter(Boolean).join(' · ') : `#${latestId.toLocaleString()}`);
+    cv.setAttribute('aria-label', `A glass honey pot on a blank page holding ${latestId.toLocaleString()} flies. Each fly is a crawler that ignored the keep-out sign.`);
+    if (!elPanel.hidden) queueList();
+  }
+  function tick() {
+    if (!firstTs) return;
+    const s = Math.max(0, Math.floor((Date.now() - new Date(firstTs).getTime())/1000));
+    elElapsed.textContent = `${pad(Math.floor(s/3600))}:${pad(Math.floor(s/60)%60)}:${pad(s%60)}`;
+    elSince.hidden = false;
+  }
+  setInterval(tick, 1000);
+
+  // full list of catches
+  let canLoadOlder = false, listQueued = false;
+  function queueList() {
+    if (listQueued) return;
+    listQueued = true;
+    requestAnimationFrame(() => { listQueued = false; renderList(); });
+  }
+  function renderList() {
+    const ids = [...meta.keys()].sort((a, b) => b - a);
+    const frag = document.createDocumentFragment();
+    for (const id of ids) {
+      const m = meta.get(id), li = document.createElement('li');
+      const add = (cls, text) => { const el = document.createElement('span'); el.className = cls; el.textContent = text; li.append(el); };
+      add('t', stamp(m.ts)); add('i', `#${id.toLocaleString()}`); add('c', m.label || 'unknown'); add('n', m.org || 'unknown network');
+      frag.append(li);
+    }
+    elList.replaceChildren(frag);
+    const shown = ids.length;
+    elPanelSub.textContent = shown >= latestId
+      ? `${latestId.toLocaleString()} caught, newest first`
+      : `${latestId.toLocaleString()} caught · showing the latest ${shown.toLocaleString()}`;
+    elOlder.hidden = !canLoadOlder || shown >= latestId;
+  }
+  function openList() {
+    elPanel.hidden = false; elOpen.setAttribute('aria-expanded', 'true');
+    renderList(); elClose.focus();
+  }
+  function closeList() {
+    elPanel.hidden = true; elOpen.setAttribute('aria-expanded', 'false'); elOpen.focus();
+  }
+  elOpen.addEventListener('click', openList);
+  elClose.addEventListener('click', closeList);
+  addEventListener('keydown', (e) => { if (e.key === 'Escape' && !elPanel.hidden) closeList(); });
+  elOlder.addEventListener('click', async () => {
+    const oldest = Math.min(...meta.keys());
+    elOlder.disabled = true; elOlder.textContent = 'Loading…';
+    try {
+      const r = await fetch('feed?before=' + oldest, { cache: 'no-store' });
+      const k = await r.json();
+      absorb(k.hits || []);
+    } catch { /* keep what is shown */ }
+    elOlder.disabled = false; elOlder.textContent = 'Load earlier catches';
+    renderList();
+  });
+
+  function pick(ev) {
+    const ux = (ev.clientX - CX)/U, uy = (ev.clientY - CY)/U;
+    let best = null, bd = 0.6*0.6;
+    for (let i = landed.length - 1; i >= 0; i--) {
+      const f = landed[i], d = (f.x-ux)**2 + (f.y-uy)**2;
+      if (d < bd) { bd = d; best = f; }
+    }
+    if (!best) { elTip.hidden = true; return; }
+    elTip.textContent = describe(best.id);
+    elTip.hidden = false;
+    const r = elTip.getBoundingClientRect();
+    elTip.style.left = Math.min(W - r.width - 16, Math.max(16, ev.clientX + 12)) + 'px';
+    elTip.style.top = Math.max(16, ev.clientY - r.height - 10) + 'px';
+  }
+  cv.addEventListener('pointermove', pick);
+  cv.addEventListener('pointerdown', pick);
+  cv.addEventListener('pointerleave', () => { elTip.hidden = true; });
+
+  // ---------- flight: in from the edge, over the rim, down into the pot ----------
+  function spawn(id, now) {
+    const r = rng(id*7919 + 13);
+    const slot = slotFor(id);
+    const th = -Math.PI*(0.05 + r()*0.9) + (r() < 0.3 ? Math.PI : 0);
+    const R = Math.hypot(W, H)/U*0.62;
+    live.push({
+      id, slot, t0: now, dur: 2600 + r()*2400,
+      sx: Math.cos(th)*R, sy: Math.sin(th)*R - 10,
+      cx: (r()-0.5)*50, cy: -46 + r()*14,
+      ex: (r()-0.5)*18, ey: -27 - r()*4,
+      amp: 1.6 + r()*3, freq: 9 + r()*12, ph: r()*6.28,
+    });
+  }
+
+  const SPLIT = 0.68;
+  function pos(f, t) {
+    let ax, ay, bx, by, cx, cy, p, amp;
+    if (t < SPLIT) {
+      p = 1 - Math.pow(1 - t/SPLIT, 1.5);
+      ax = f.sx; ay = f.sy; bx = f.cx; by = f.cy; cx = f.ex; cy = f.ey; amp = f.amp*Math.pow(1-p, 1.3);
+    } else {
+      p = (t - SPLIT)/(1 - SPLIT); p = p*p*(3 - 2*p);
+      ax = f.ex; ay = f.ey; bx = f.ex*0.7 + f.slot.x*0.3; by = RIMY + 4; cx = f.slot.x; cy = f.slot.y; amp = 0.4*(1-p);
+    }
+    const m = 1 - p;
+    const x = m*m*ax + 2*m*p*bx + p*p*cx, y = m*m*ay + 2*m*p*by + p*p*cy;
+    const dx = 2*m*(bx-ax) + 2*p*(cx-bx), dy = 2*m*(by-ay) + 2*p*(cy-by);
+    const L = Math.hypot(dx, dy) || 1, w = amp*Math.sin(p*f.freq + f.ph);
+    return [x - dy/L*w, y + dx/L*w];
+  }
+
+  function enqueue(id) {
+    if (reduce) { land(id); return; }
+    pending.push(id);
+    while (pending.length > MAX_BACKLOG) land(pending.shift(), true);
+  }
+
+  function frame(now) {
+    while (pending.length && live.length < MAX_LIVE && now >= nextSpawn) {
+      spawn(pending.shift(), now);
+      nextSpawn = now + (pending.length > 20 ? 60 : 180 + Math.random()*420);
+    }
+    if (dirty || live.length || now < settling) {
+      const inside = [], outside = [];
+      for (let i = live.length - 1; i >= 0; i--) {
+        const f = live[i], t = Math.min(1, (now - f.t0)/f.dur);
+        if (t >= 1) { live.splice(i, 1); land(f.id, false, now); continue; }
+        const [x, y] = pos(f, t), [x2, y2] = pos(f, Math.min(1, t + 0.006));
+        const wing = 0.35 + 0.65*Math.abs(Math.sin(now*0.11 + f.ph));
+        const fly = [x, y, Math.atan2(y2 - y, x2 - x), f.slot.s, wing];
+        (t > SPLIT && y > RIMY + 0.6 ? inside : outside).push(fly);
+      }
+      ctx.setTransform(1,0,0,1,0,0);
+      ctx.drawImage(base, 0, 0);
+      unit(ctx);
+      // the loose top of the heap, mid-shuffle where a fly has just landed
+      for (let i = Math.max(0, landed.length - SURF); i < landed.length; i++) {
+        const f = landed[i];
+        const [x, y, a] = now_(f, now);
+        drawFly(ctx, x, y, a, f.s, 0.75, 0.97, true);
+      }
+      for (const v of inside) drawFly(ctx, ...v);
+      ctx.setTransform(1,0,0,1,0,0);
+      ctx.drawImage(front, 0, 0);
+      unit(ctx);
+      for (const v of outside) drawFly(ctx, ...v);
+      dirty = live.length > 0;
+    }
+    requestAnimationFrame(frame);
+  }
+
+  // ---------- data ----------
+  function absorb(hits) {
+    for (const h of hits) meta.set(h.id, { label: h.label, org: h.org, ts: h.ts });
+  }
+
+  async function liveFeed() {
+    const first = await fetch('feed?since=0', { cache: 'no-store' });
+    if (!first.ok) throw new Error('no feed');
+    const j = await first.json();
+    if (typeof j.maxId !== 'number') throw new Error('bad feed');
+    absorb(j.hits || []);
+    firstTs = j.firstTs || null; canLoadOlder = true; tick();
+    const upto = Math.min(j.maxId, CAP + 400);   // beyond this the pot already looks full
+    for (let id = 1; id <= upto; id++) land(id, true);
+    latestId = j.maxId; updateCaption();
+    let last = j.maxId;
+    const poll = async () => {
+      try {
+        const r = await fetch('feed?since=' + last, { cache: 'no-store' });
+        const k = await r.json();
+        absorb(k.hits || []);
+        for (let id = last + 1; id <= k.maxId; id++) enqueue(id);
+        last = Math.max(last, k.maxId);
+        setTimeout(poll, 10000);
+      } catch { setTimeout(poll, 30000); }
+    };
+    setTimeout(poll, 10000);
+  }
+
+  function demo() {
+    const kinds = [
+      ['GPTBot (OpenAI)', 'Microsoft Corporation'], ['CCBot (Common Crawl)', 'Amazon.com, Inc.'],
+      ['Bytespider (ByteDance)', 'ByteDance Pte. Ltd.'], ['python-requests (script)', 'DigitalOcean, LLC'],
+      ['other bot', 'Hetzner Online GmbH'], ['HeadlessChrome (headless browser)', 'Alibaba US Technology'],
+      ['meta-externalagent (Meta)', 'Facebook, Inc.'], ['ImagesiftBot (ImageSift)', 'OVH SAS'],
+      ['no user agent', 'Tencent Building'], ['Scrapy (script)', 'Google LLC'],
+    ];
+    let id = 0;
+    const fake = (when) => {
+      id++;
+      const k = kinds[Math.floor(Math.random()*kinds.length)];
+      meta.set(id, { label: k[0], org: k[1], ts: new Date(when).toISOString() });
+      return id;
+    };
+    const start = Date.now() - 6*864e5 - 4170e3;
+    firstTs = new Date(start).toISOString();
+    for (let i = 0; i < 700; i++) land(fake(start + i*740e3), true);
+    updateCaption(); tick();
+    const drip = () => {
+      const burst = Math.random() < 0.09 ? 6 + Math.floor(Math.random()*22) : 1;
+      for (let i = 0; i < burst; i++) enqueue(fake(Date.now()));
+      setTimeout(drip, 1800 + Math.random()*5200);
+    };
+    setTimeout(drip, 900);
+  }
+
+  // ---------- go ----------
+  resize();
+  addEventListener('resize', resize);
+  requestAnimationFrame(frame);
+  const forceDemo = /[?&]demo\b/.test(location.search) || window.HONEYPOT_DEMO;
+  (forceDemo ? Promise.reject() : liveFeed()).catch(demo);
+})();
+</script>
